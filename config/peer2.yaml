@@ -1,12 +1,12 @@
-peer_id: peer2
-host: 100.65.100.119
+git statuspeer_id: peer2
+host: 100.81.236.111
 iface: tailscale0
 p2p_port: 9000
 api_port: 8000
-bootstrap_peers: ["IP_TAILSCALE_CUA_NGOC:9000"]
+bootstrap_peers: ["100.80.215.111:9000"]
 db_path: data/peer2.db
 model_path: models/iforest.joblib
-whitelist: ["IP_TAILSCALE_CUA_NGOC", "100.65.100.119", "127.0.0.1"]
+whitelist: ["100.80.215.111", "100.81.236.111", "127.0.0.1"]
 
 rules:
   port_scan:
@@ -34,3 +34,4 @@ p2p:
   alert_ttl: 3
   ack_timeout: 3
   max_retry: 3
+```[cite: 6]

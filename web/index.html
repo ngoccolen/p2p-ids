@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P2P-IDS AI · SOC Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #111827;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --low: #6b7280;
+      --med: #f59e0b;
+      --high: #f97316;
+      --crit: #ef4444;
+      --ok: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 18px 24px;
+    }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 18px;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .brand h1 { font-size: 1.35rem; color: #fff; display: flex; align-items: center; gap: 10px; }
+    .brand p { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .badge-ws {
+      font-size: 0.75rem; padding: 4px 10px; border-radius: 999px;
+      background: rgba(16,185,129,0.15); color: var(--ok); border: 1px solid rgba(16,185,129,0.4);
+    }
+    .badge-ws.off { background: rgba(239,68,68,0.15); color: var(--crit); border-color: rgba(239,68,68,0.4); }
+    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button {
+      background: #1d4ed8; color: #fff; border: none; padding: 8px 14px;
+      border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 0.83rem;
+    }
+    button:hover { opacity: 0.9; }
+    button.btn-danger { background: #dc2626; }
+    button.btn-sec { background: #374151; }
+    input, select {
+      background: #0f172a; color: var(--text); border: 1px solid var(--border);
+      padding: 7px 10px; border-radius: 6px; font-size: 0.83rem;
+    }
+    .kpis {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+      gap: 14px; margin-bottom: 18px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 15px;
+    }
+    .kpi-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi-val { font-size: 1.65rem; font-weight: 700; margin-top: 6px; color: #fff; }
+    .kpi-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+    .charts {
+      display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 18px;
+    }
+    @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+    .grid-2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;
+    }
+    @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
+    h2 { font-size: 0.98rem; margin-bottom: 12px; color: #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; }
+    .sev { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; display: inline-block; }
+    .sev-LOW { background: rgba(107,114,128,0.25); color: #d1d5db; }
+    .sev-MEDIUM { background: rgba(245,158,11,0.2); color: #fbbf24; }
+    .sev-HIGH { background: rgba(249,115,22,0.2); color: #fb923c; }
+    .sev-CRITICAL { background: rgba(239,68,68,0.25); color: #f87171; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot.ONLINE { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.OFFLINE { background: var(--crit); }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; background: #1e293b;
+      border-left: 4px solid var(--crit); padding: 12px 16px; border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 999; max-width: 380px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>
+        🛡️ Distributed P2P-IDS + AI SOC
+        <span id="wsBadge" class="badge-ws off">WS Connecting...</span>
+      </h1>
+      <p id="nodeSubtitle">Đang tải thông tin nút...</p>
+    </div>
+    <div class="actions">
+      <input id="simIp" type="text" value="203.0.113.50" style="width:135px" title="IP giả lập tấn công" />
+      <select id="simType">
+        <option value="PORT_SCAN">PORT_SCAN</option>
+        <option value="SSH_BRUTE_FORCE">SSH_BRUTE_FORCE</option>
+        <option value="FLOOD">FLOOD</option>
+        <option value="ANOMALY">ANOMALY (AI)</option>
+      </select>
+      <select id="simSev">
+        <option value="HIGH">HIGH</option>
+        <option value="MEDIUM">MEDIUM</option>
+        <option value="CRITICAL">CRITICAL</option>
+      </select>
+      <button onclick="simulateAlert()">⚡ Giả lập Alert Test P2P</button>
+      <button class="btn-sec" onclick="refreshAll()">🔄 Làm mới</button>
+    </div>
+  </header>
+
+  <section class="kpis">
+    <div class="card">
+      <div class="kpi-label">Node & Lamport Clock</div>
+      <div class="kpi-val" id="kpiNode">--</div>
+      <div class="kpi-sub" id="kpiLamport">Lamport: 0</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">Peers P2P Online</div>
+      <div class="kpi-val" id="kpiPeers">0 / 0</div>
+      <div class="kpi-sub">Kết nối qua Tailscale Mesh</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">Lưu lượng Realtime</div>
+      <div class="kpi-val" id="kpiPps">0 pps</div>
+      <div class="kpi-sub" id="kpiBps">0 B/s</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">Tổng Cảnh Báo (Alerts)</div>
+      <div class="kpi-val" id="kpiAlerts">0</div>
+      <div class="kpi-sub" id="kpiCrit">Critical/High: 0</div>
+    </div>
+    <div class="card">
+      <div class="kpi-label">IP Đang Bị Chặn (IPS)</div>
+      <div class="kpi-val" id="kpiBlocked">0</div>
+      <div class="kpi-sub" id="kpiFlows">Tổng Flows: 0</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="card">
+      <h2>📈 Lưu lượng mạng thời gian thực (Packets/s)</h2>
+      <canvas id="trafficChart" height="95"></canvas>
+    </div>
+    <div class="card">
+      <h2>🎯 Phân bố mức độ cảnh báo</h2>
+      <canvas id="sevChart" height="185"></canvas>
+    </div>
+  </section>
+
+  <section class="grid-2">
+    <div class="card">
+      <h2>🌐 Trạng thái các Nút mạng P2P (Peers)</h2>
+      <table>
+        <thead>
+          <tr><th>Peer ID</th><th>Địa chỉ Tailscale</th><th>Trạng thái</th><th>RTT (ms)</th></tr>
+        </thead>
+        <tbody id="peersBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>
+        <span>🔒 Danh sách IP bị Iptables chặn (IPS)</span>
+        <span style="display:flex;gap:6px;">
+          <input id="manualBlockIp" placeholder="Nhập IP cần chặn..." style="width:140px" />
+          <button class="btn-danger" onclick="manualBlock()">Chặn P2P</button>
+        </span>
+      </h2>
+      <table>
+        <thead>
+          <tr><th>IP Nguồn</th><th>Lý do</th><th>Nguồn phát lệnh</th><th>Thao tác</th></tr>
+        </thead>
+        <tbody id="blockedBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom:18px;">
+    <h2>🚨 Cảnh báo xâm nhập mới nhất (Sắp xếp theo Đồng hồ Logic Lamport)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Lamport</th><th>Loại tấn công</th><th>Mức độ</th><th>Nguồn phát hiện</th>
+          <th>IP Tấn công</th><th>Mô tả chi tiết</th><th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="alertsBody"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>🌊 Luồng mạng (Network Flows 5-Tuple) thu thập gần nhất từ Scapy</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Flow 5-Tuple</th><th>Giao thức</th><th>Gói tin</th><th>Bytes</th>
+          <th>Cờ TCP (S/A/F/R)</th><th>Điểm AI</th>
+        </tr>
+      </thead>
+      <tbody id="flowsBody"></tbody>
+    </table>
+  </section>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let trafficChart, sevChart;
+    const maxPoints = 30;
+    const labels = [], ppsData = [];
+
+    function initCharts() {
+      const ctxT = document.getElementById("trafficChart").getContext("2d");
+      trafficChart = new Chart(ctxT, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: "Packets / sec",
+            data: ppsData,
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56,189,248,0.12)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          animation: false,
+          scales: {
+            x: { ticks: { color: "#9ca3af" }, grid: { color: "#1f2937" } },
+            y: { beginAtZero: true, ticks: { color: "#9ca3af" }, grid: { color: "#1f2937" } }
+          },
+          plugins: { legend: { labels: { color: "#e5e7eb" } } }
+        }
+      });
+
+      const ctxS = document.getElementById("sevChart").getContext("2d");
+      sevChart = new Chart(ctxS, {
+        type: "doughnut",
+        data: {
+          labels: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          datasets: [{
+            data: [0, 0, 0, 0],
+            backgroundColor: ["#6b7280", "#f59e0b", "#f97316", "#ef4444"],
+            borderWidth: 0
+          }]
+        },
+        options: { plugins: { legend: { position: "bottom", labels: { color: "#e5e7eb" } } } }
+      });
+    }
+
+    function showToast(html) {
+      const el = document.getElementById("toast");
+      el.innerHTML = html;
+      el.style.display = "block";
+      setTimeout(() => { el.style.display = "none"; }, 5000);
+    }
+
+    async function loadStats() {
+      const r = await fetch("/api/stats");
+      const s = await r.json();
+      document.getElementById("kpiNode").textContent = s.peer_id;
+      document.getElementById("kpiLamport").textContent = `Lamport Clock: ${s.lamport}`;
+      document.getElementById("nodeSubtitle").textContent =
+        `Nút hiện tại: ${s.peer_id} (${s.host}) · Đồng bộ qua P2P Gossip + Lamport Clock`;
+      document.getElementById("kpiPeers").textContent = `${s.online_peers} / ${s.total_peers}`;
+      document.getElementById("kpiAlerts").textContent = s.total_alerts;
+      const hi = (s.severity_counts.HIGH || 0) + (s.severity_counts.CRITICAL || 0);
+      document.getElementById("kpiCrit").textContent = `Critical/High: ${hi}`;
+      document.getElementById("kpiBlocked").textContent = s.blocked_count;
+      document.getElementById("kpiFlows").textContent = `Tổng Flows: ${s.total_flows}`;
+
+      sevChart.data.datasets[0].data = [
+        s.severity_counts.LOW || 0,
+        s.severity_counts.MEDIUM || 0,
+        s.severity_counts.HIGH || 0,
+        s.severity_counts.CRITICAL || 0
+      ];
+      sevChart.update();
+    }
+
+    async function loadPeers() {
+      const r = await fetch("/api/peers");
+      const d = await r.json();
+      const tb = document.getElementById("peersBody");
+      if (!d.peers.length) {
+        tb.innerHTML = `<tr><td colspan="4" style="color:#9ca3af">Chưa có peer lân cận nào kết nối.</td></tr>`;
+        return;
+      }
+      tb.innerHTML = d.peers.map(p => `
+        <tr>
+          <td><strong>${p.peer_id}</strong></td>
+          <td>${p.host}:${p.p2p_port}</td>
+          <td><span class="dot ${p.status}"></span>${p.status}</td>
+          <td>${p.rtt_ms != null ? p.rtt_ms + " ms" : "--"}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadAlerts() {
+      const r = await fetch("/api/alerts?order=lamport&size=15");
+      const d = await r.json();
+      const tb = document.getElementById("alertsBody");
+      if (!d.items.length) {
+        tb.innerHTML = `<tr><td colspan="7" style="color:#9ca3af">Chưa ghi nhận cảnh báo nào.</td></tr>`;
+        return;
+      }
+      tb.innerHTML = d.items.map(a => `
+        <tr>
+          <td><code>L=${a.lamport}</code></td>
+          <td><strong>${a.type}</strong> <span style="color:#9ca3af;font-size:0.74rem">(${a.source})</span></td>
+          <td><span class="sev sev-${a.severity}">${a.severity}</span></td>
+          <td>${a.origin_peer} ${a.is_local ? "🏠" : "🌐"}</td>
+          <td><code>${a.src_ip}</code></td>
+          <td>${a.description || ""}</td>
+          <td>
+            <button class="btn-danger" style="padding:4px 8px;font-size:0.74rem"
+              onclick="blockIp('${a.src_ip}', 'Chặn từ Alert ${a.type}')">Chặn IP</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadBlocked() {
+      const r = await fetch("/api/blocked");
+      const d = await r.json();
+      const tb = document.getElementById("blockedBody");
+      if (!d.items.length) {
+        tb.innerHTML = `<tr><td colspan="4" style="color:#9ca3af">Chưa có IP nào đang bị chặn.</td></tr>`;
+        return;
+      }
+      tb.innerHTML = d.items.map(b => `
+        <tr>
+          <td><code>${b.ip}</code></td>
+          <td>${b.reason}</td>
+          <td>${b.source_peer}</td>
+          <td>
+            <button class="btn-sec" style="padding:4px 8px;font-size:0.74rem"
+              onclick="unblockIp('${b.ip}')">Gỡ chặn</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadFlows() {
+      const r = await fetch("/api/flows?size=10");
+      const d = await r.json();
+      const tb = document.getElementById("flowsBody");
+      if (!d.items.length) {
+        tb.innerHTML = `<tr><td colspan="6" style="color:#9ca3af">Đang thu thập luồng mạng (Flow đóng sau 15s idle hoặc FIN/RST)...</td></tr>`;
+        return;
+      }
+      tb.innerHTML = d.items.map(f => `
+        <tr style="${f.is_anomaly ? 'background:rgba(239,68,68,0.12)' : ''}">
+          <td><code>${f.flow_id}</code></td>
+          <td>${f.protocol}</td>
+          <td>${f.packets}</td>
+          <td>${f.bytes}</td>
+          <td>${f.syn}/${f.ack}/${f.fin}/${f.rst}</td>
+          <td>${(f.anomaly_score || 0).toFixed(2)}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function simulateAlert() {
+      const src_ip = document.getElementById("simIp").value.trim() || "203.0.113.50";
+      const type = document.getElementById("simType").value;
+      const severity = document.getElementById("simSev").value;
+      await fetch("/api/simulate-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type, severity, src_ip,
+          description: `Kiểm thử ${type} từ ${src_ip} (phát tán qua P2P Gossip)`
+        })
+      });
+    }
+
+    async function blockIp(ip, reason) {
+      await fetch("/api/block", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip, reason })
+      });
+      await loadBlocked();
+      await loadStats();
+    }
+
+    async function manualBlock() {
+      const ip = document.getElementById("manualBlockIp").value.trim();
+      if (!ip) return;
+      await blockIp(ip, "Chặn thủ công bởi Quản trị viên");
+      document.getElementById("manualBlockIp").value = "";
+    }
+
+    async function unblockIp(ip) {
+      await fetch("/api/unblock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip })
+      });
+      await loadBlocked();
+      await loadStats();
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStats(), loadPeers(), loadAlerts(), loadBlocked(), loadFlows()]);
+    }
+
+    function connectWS() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      const badge = document.getElementById("wsBadge");
+
+      ws.onopen = () => {
+        badge.textContent = "WS Live";
+        badge.classList.remove("off");
+      };
+      ws.onclose = () => {
+        badge.textContent = "WS Reconnecting...";
+        badge.classList.add("off");
+        setTimeout(connectWS, 2000);
+      };
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.event === "traffic") {
+          const t = new Date(msg.data.ts * 1000).toLocaleTimeString("vi-VN");
+          document.getElementById("kpiPps").textContent = `${msg.data.pps} pps`;
+          document.getElementById("kpiBps").textContent = `${msg.data.bps} B/s`;
+          labels.push(t);
+          ppsData.push(msg.data.pps);
+          if (labels.length > maxPoints) { labels.shift(); ppsData.shift(); }
+          trafficChart.update();
+        } else if (msg.event === "alert") {
+          const a = msg.data;
+          showToast(`<strong>🚨 [${a.severity}] ${a.type}</strong><br/>Nguồn: ${a.src_ip} (từ ${a.origin_peer})`);
+          loadAlerts();
+          loadStats();
+        } else if (msg.event === "peer_status") {
+          loadPeers();
+          loadStats();
+        } else if (msg.event === "block") {
+          loadBlocked();
+          loadStats();
+        }
+      };
+    }
+
+    initCharts();
+    refreshAll();
+    connectWS();
+    setInterval(loadFlows, 5000);
+  </script>
+</body>
+</html>

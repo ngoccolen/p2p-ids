@@ -1,4 +1,4 @@
-git statuspeer_id: peer2
+peer_id: peer2
 host: 100.81.236.111
 iface: tailscale0
 p2p_port: 9000
